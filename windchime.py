@@ -24,7 +24,7 @@ def find_basis_vectors(sensor_pos, entry_vecs, exit_vecs, #only_one_track=False
 
 
 
-def signal(b, v, sensor_vectors, b_bases, v_bases, G=6.67e-11, mass=mass_dm, min_impact_parameter=min_impact_parameter):
+def signal(b, v, sensor_vectors, b_bases, v_bases,  mass, min_impact_parameter, G=6.67e-11):
     '''the S of the SNR. Based on
     https://github.com/windchimeproject/documentation_and_notes/blob/main/analysis_notes/Analytic_SNR_for_a_single_sensor.pdf
     
