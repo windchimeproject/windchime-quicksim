@@ -60,8 +60,6 @@ def track_parameter_stacker(vel, entry_vecs, exit_vecs):
     track_parameters = np.vstack((velocity, position_entry, position_exit))
     return track_parameters
 
-track_parameters = np.vstack((velocity, position_entry, position_exit))
-
     
 def simulate(track_parameters, sensor_positions, 
              beta,
