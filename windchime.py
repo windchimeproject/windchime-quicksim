@@ -1,3 +1,11 @@
+'''Windchime quicksim module'''
+#Just imported these for future use
+import json
+from numba import njit
+import numpy as np
+from scipy import signal
+from tqdm import tqdm, trange
+
 def find_basis_vectors(sensor_pos, entry_vecs, exit_vecs, #only_one_track=False
                       ):
     '''
