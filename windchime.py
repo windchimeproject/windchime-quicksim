@@ -6,6 +6,14 @@ import numpy as np
 from scipy import signal
 from tqdm import tqdm, trange
 
+#Some units/constants to make defaults easier
+mass_dm = 2.176434e-8 #kg https://en.wikipedia.org/wiki/Planck_units
+sensor_mass = 1e-3 #kg
+sensor_density = 1e4 #kg/m^3
+min_impact_parameter = (sensor_mass/sensor_density)**(1/3) #metres
+gas_pressure = 1e-10 #Pa
+
+
 def find_basis_vectors(sensor_pos, entry_vecs, exit_vecs, #only_one_track=False
                       ):
     '''
