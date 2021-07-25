@@ -85,7 +85,7 @@ def simulate(track_parameters, sensor_positions,
     snr_bin_data = np.zeros((bins_snr.shape))
     b_bin_data = np.zeros((bins_b.size))
     sqrt_noise_bin_data = np.zeros((bins_snr.size))
-    if return_all_snrs = True:
+    if return_all_snrs == True:
         snr_all_data = []
     
     for i, track_parameter in tqdm(enumerate(track_parameters.T)): 
@@ -116,7 +116,7 @@ def simulate(track_parameters, sensor_positions,
         snr_bin_data /= track_parameters.shape[1] # Normalize by the number of tracks
         b_bin_data /= track_parameters.shape[1]
         sqrt_noise_bin_data /= track_parameters.shape[1]
-    if return_all_snrs = True:
+    if return_all_snrs == True:
         return np.vstack(snr_all_data)
     else:
         return snr_bin_data/np.sqrt(sqrt_noise_bin_data), b_bin_data, sqrt_noise_bin_data
