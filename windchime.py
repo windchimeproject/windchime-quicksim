@@ -38,8 +38,6 @@ def find_basis_vectors(sensor_pos, entry_vecs, exit_vecs, #only_one_track=False
 
     return (b_bases, v_bases, b_vecs)
 
-
-
 def signal(b, v, sensor_vectors, b_bases, v_bases,  mass, min_impact_parameter, G=6.67e-11):
     '''the S of the SNR. Based on
     https://github.com/windchimeproject/documentation_and_notes/blob/main/analysis_notes/Analytic_SNR_for_a_single_sensor.pdf
@@ -60,8 +58,6 @@ def signal(b, v, sensor_vectors, b_bases, v_bases,  mass, min_impact_parameter, 
     b[b < min_impact_parameter] = min_impact_parameter
     return G**2*mass**2*np.pi*(3*b_dot_n**2 + v_dot_n**2)/(8*b**3*v)
 
-
-
 def track_parameter_stacker(vel, entry_vecs, exit_vecs):
     '''
     Just makes a stack to have track parameters in one place
@@ -76,6 +72,15 @@ def track_parameter_stacker(vel, entry_vecs, exit_vecs):
     track_parameters = np.vstack((velocity, position_entry, position_exit))
     return track_parameters
 
+def beta_func(gas_pressure=gas_pressure, A_d=A_d, sensor_mass=sensor_mass, T=4):
+    '''
+    Noise model from https://arxiv.org/abs/1903.00492, for free-falling sensors.
+    gas_pressure: the gas pressure
+    A_d: sensor cross-sectional area
+    sensor_mass: mass of sensors
+    T: temperature in Kelvin
+    '''
+    return gas_pressure*A_d*np.sqrt(4*amu*k_B*T)/sensor_mass**2
     
 def simulate(track_parameters, sensor_positions, 
              beta,
@@ -85,6 +90,7 @@ def simulate(track_parameters, sensor_positions,
     '''
     track_parameters: stack of the track parameters from previous func
     sensor_positions: positions of the sensors
+    beta: defined from beta_func
     bins_snr: bins for storing the SNR histograms
     bins_b: bins for storing impact parameter histograms
     return_all_snrs: set False if want full detector SNR, set True for individual SNRs
@@ -134,3 +140,21 @@ def simulate(track_parameters, sensor_positions,
         return np.vstack(snr_all_data)
     else:
         return snr_bin_data/np.sqrt(sqrt_noise_bin_data), b_bin_data, sqrt_noise_bin_data
+
+def SNRs_from_S_and_beta(S, beta):
+    '''Calculates the SNR from the output of array_SNRs, if return_individual_SNR=True. Vars defined in previus funcs'''
+    S_summed = np.sum(S, axis=0)
+    return np.sqrt(S_summed/beta)
+
+def toy_MC_poisson_detection(DM_rate, detection_probability_params, trials=100):
+    '''
+    Toy MC that returns the number of dark matter particles detected in 1 year of exposure.
+    DM_rate: Expected number of events per year
+    detection_probability_params: requirements for a positive detection
+    trials: number of trials
+    '''
+    p_variable = stats.beta(*detection_probability_params)
+    ps = p_variable.rvs(trials)
+    DM_particles = stats.poisson(DM_rate).rvs(trials)
+    detected_particles = stats.binom.rvs(DM_particles, ps)
+    return detected_particles
