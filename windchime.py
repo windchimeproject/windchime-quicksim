@@ -1,18 +1,33 @@
-'''Windchime quicksim module'''
+'''Windchime Simulation Module'''
 #Just imported these for future use
 import json
 from numba import njit
 import numpy as np
 from scipy import signal
+from scipy import stats
 from tqdm import tqdm, trange
 
-#Some units/constants to make defaults easier
+
+'''
+Here we initialize some important constants that are used as defaults
+'''
+G = 6.64730e-11 #m^3/kg/s^2
+amu = 1.6605390666e-29 #kg
+k_B = 1.380649e-23 #J/K
+GeV_per_c2 = 1.7826619218835431593e-27
 mass_dm = 2.176434e-8 #kg https://en.wikipedia.org/wiki/Planck_units
+
 sensor_mass = 1e-3 #kg
 sensor_density = 1e4 #kg/m^3
 min_impact_parameter = (sensor_mass/sensor_density)**(1/3) #metres
 gas_pressure = 1e-10 #Pa
+A_d = (sensor_mass/sensor_density)**(2/3) #sensor cross sectional area
+beta = gas_pressure*A_d*np.sqrt(4*amu*k_B*4)/sensor_mass**2
 
+radius = 5 #metre
+v_dm = 220e3 #m/s
+rho_dm = 0.3*GeV_per_c2*(100**3) #kg/m^3
+expected_rate_through_radius = rho_dm*v_dm/mass_dm*3600*24*365*np.pi*radius**2 #events per year
 
 def find_basis_vectors(sensor_pos, entry_vecs, exit_vecs, #only_one_track=False
                       ):
@@ -38,7 +53,9 @@ def find_basis_vectors(sensor_pos, entry_vecs, exit_vecs, #only_one_track=False
 
     return (b_bases, v_bases, b_vecs)
 
-def signal(b, v, sensor_vectors, b_bases, v_bases,  mass, min_impact_parameter, G=6.67e-11):
+
+
+def signal(b, v, sensor_vectors, b_bases, v_bases, mass, min_impact_parameter, G=6.67e-11):
     '''the S of the SNR. Based on
     https://github.com/windchimeproject/documentation_and_notes/blob/main/analysis_notes/Analytic_SNR_for_a_single_sensor.pdf
     
@@ -90,7 +107,7 @@ def simulate(track_parameters, sensor_positions,
     '''
     track_parameters: stack of the track parameters from previous func
     sensor_positions: positions of the sensors
-    beta: defined from beta_func
+    beta: noise parameter defined by beta_func
     bins_snr: bins for storing the SNR histograms
     bins_b: bins for storing impact parameter histograms
     return_all_snrs: set False if want full detector SNR, set True for individual SNRs
@@ -105,8 +122,10 @@ def simulate(track_parameters, sensor_positions,
     snr_bin_data = np.zeros((bins_snr.shape))
     b_bin_data = np.zeros((bins_b.size))
     sqrt_noise_bin_data = np.zeros((bins_snr.size))
+    
     if return_all_snrs == True:
-        snr_all_data = []
+        snr_all_data = np.zeros((N_sensors, N_vels))
+        b_all_data = np.zeros((N_sensors, N_vels))
     
     for i, track_parameter in tqdm(enumerate(track_parameters.T)): 
         velocity = track_parameter[0]
@@ -128,7 +147,8 @@ def simulate(track_parameters, sensor_positions,
                                            bins=bins_snr)[1]
         
         if return_all_snrs == True:
-            snr_all_data.append(np.sum(signal_result, axis=0))
+            snr_all_data[:,i] = signal_result
+            b_all_data[:,i] = b
         
         # stop early while testing
 #         if i > 100: break
@@ -137,10 +157,12 @@ def simulate(track_parameters, sensor_positions,
         b_bin_data /= track_parameters.shape[1]
         sqrt_noise_bin_data /= track_parameters.shape[1]
     if return_all_snrs == True:
-        return np.vstack(snr_all_data)
+        return snr_all_data, b_all_data
     else:
         return snr_bin_data/np.sqrt(sqrt_noise_bin_data), b_bin_data, sqrt_noise_bin_data
 
+    
+@njit
 def SNRs_from_S_and_beta(S, beta):
     '''Calculates the SNR from the output of array_SNRs, if return_individual_SNR=True. Vars defined in previus funcs'''
     S_summed = np.sum(S, axis=0)
@@ -158,3 +180,11 @@ def toy_MC_poisson_detection(DM_rate, detection_probability_params, trials=100):
     DM_particles = stats.poisson(DM_rate).rvs(trials)
     detected_particles = stats.binom.rvs(DM_particles, ps)
     return detected_particles
+
+
+def dm_events_per_year(mass_dm=mass_dm, rho_dm=rho_dm, v_dm=v_dm):
+    '''
+    Caculates expected DM events per year
+    '''
+    expected_rate_through_radius = rho_dm*v_dm/mass_dm*3600*24*365*np.pi*radius**2
+    return expected_rate_through_radius
