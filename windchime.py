@@ -99,18 +99,18 @@ def beta_func(gas_pressure=gas_pressure, A_d=A_d, sensor_mass=sensor_mass, T=4):
     '''
     return gas_pressure*A_d*np.sqrt(4*amu*k_B*T)/sensor_mass**2
     
-def simulate(track_parameters, sensor_positions, 
+def simulate(track_parameters, sensor_vectors, sensor_positions,
              beta,
              bins_snr,
              bins_b,
-             return_all_snrs = False):
+             all_sensor_values = True):
     '''
     track_parameters: stack of the track parameters from previous func
-    sensor_positions: positions of the sensors
+    sensor_vector: orientations of the sensors
     beta: noise parameter defined by beta_func
     bins_snr: bins for storing the SNR histograms
     bins_b: bins for storing impact parameter histograms
-    return_all_snrs: set False if want full detector SNR, set True for individual SNRs
+    all_sensor_values: set True for SNR histogram of all sensors, False for sum SNR and minimum impact parameter histogram
     '''
     # Tracks is (7, N) for N tracks where dimensions are velocity, entry 3-position, exit 3-position
     
@@ -119,15 +119,10 @@ def simulate(track_parameters, sensor_positions,
     # First dimension is signal, second is impact parameter, third is noise
     N_sensors = sensor_positions.shape[1]
     N_vels = len(track_parameters[0, :])
-    snr_bin_data = np.zeros((bins_snr.shape))
-    b_bin_data = np.zeros((bins_b.size))
-    sqrt_noise_bin_data = np.zeros((bins_snr.size))
+    snr_bin_data = np.zeros((bins_snr.size-1))
+    b_bin_data = np.zeros((bins_b.size-1))
     
-    if return_all_snrs == True:
-        snr_all_data = np.zeros((N_sensors, N_vels))
-        b_all_data = np.zeros((N_sensors, N_vels))
-    
-    for i, track_parameter in tqdm(enumerate(track_parameters.T)): 
+    for i, track_parameter in enumerate(tqdm(track_parameters.T)): 
         velocity = track_parameter[0]
         position_entry = track_parameter[1:4]
         position_exit = track_parameter[4:]
@@ -137,30 +132,30 @@ def simulate(track_parameters, sensor_positions,
         # Call some function to get SNRs
         b_bases, v_bases, b_vecs = find_basis_vectors(sensor_positions, np.repeat([position_entry], N_sensors, axis=0).T, np.repeat([position_exit], N_sensors, axis=0).T)
         b = np.linalg.norm(b_vecs,axis=0)
-        signal_result = signal(b, velocity, sensor_positions, b_bases, v_bases, mass=mass_dm, min_impact_parameter=min_impact_parameter)
+        signal_result = signal(b, velocity, sensor_vectors, b_bases, v_bases, mass=mass_dm, min_impact_parameter=min_impact_parameter)
         
-        snr_bin_data += np.histogram(np.sum(signal_result, axis=0),
-                                           bins=bins_snr)[1]
-        b_bin_data += np.histogram(np.min(b), 
-                                           bins=bins_b)[1]
-        sqrt_noise_bin_data += np.histogram(np.sum(signal_result, axis=0)*beta,
-                                           bins=bins_snr)[1]
+        if not all_sensor_values:
+            signal_result = np.sum(signal_result, axis=0)
+            b = np.min(b)
+            
+        # Populate histogram with one (if one) or more values (if all sensors)
+        snr_result = np.sqrt(signal_result/beta)
         
-        if return_all_snrs == True:
-            snr_all_data[:,i] = signal_result
-            b_all_data[:,i] = b
+        # Some sanity checks to check results in bin bounds
+        assert bins_snr[0] < snr_result.min(), snr_result.min()
+        assert bins_snr[-1] > snr_result.max(), snr_result.max()
+        assert bins_b[0] < b.min(), b.min()
+        assert bins_b[-1] > b.max(), b.max()    
         
-        # stop early while testing
-#         if i > 100: break
+        # Make function just returning histogram values, then use that output in the += line.  THis function called by for loop.
         
-        snr_bin_data /= track_parameters.shape[1] # Normalize by the number of tracks
-        b_bin_data /= track_parameters.shape[1]
-        sqrt_noise_bin_data /= track_parameters.shape[1]
-    if return_all_snrs == True:
-        return snr_all_data, b_all_data
-    else:
-        return snr_bin_data/np.sqrt(sqrt_noise_bin_data), b_bin_data, sqrt_noise_bin_data
-
+        snr_bin_data += np.histogram(snr_result, bins=bins_snr)[0]
+        b_bin_data += np.histogram(b, bins=bins_b)[0]
+        
+    snr_bin_data /= track_parameters.shape[1] # Normalize by the number of tracks
+    b_bin_data /= track_parameters.shape[1]
+    
+    return snr_bin_data, b_bin_data
     
 @njit
 def SNRs_from_S_and_beta(S, beta):
