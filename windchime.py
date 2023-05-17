@@ -96,6 +96,30 @@ def signal_without_template_matching(b, v, sensor_vectors, b_bases, v_bases, mas
     mass_arr[b < min_impact_parameter] = mass_arr[b < min_impact_parameter]/(min_impact_parameter)**3*b[b < min_impact_parameter]**3 #scaling DM mass is equivalent to scaling test mass.
     return np.sqrt(2)*G*mass_arr*b_dot_n/(b*v) #sqrt 2 comes from integrating signal from t=-b/v to t=b/v
 
+def signal_interpolation_func(b, v, sensor_vectors, b_bases, v_bases, mass, min_impact_parameter, SNR_func):
+    '''Signal with a interpolation function giving the normalised SNR as a function of b and v
+    
+    Parameters:
+    b: array of impact parameters.
+    v: array of velocity magnitudes.
+    sensor_vectors: sensor orientations. 3xN array; individual vectors assumed to be normalised.
+    b_bases: b basis vectors for each entry, as defined in find_basis_vectors.
+             3xN array; individual vectors assumed to be normalised.
+    v_bases: v basis vectors for each entry, as defined in find_basis_vectors.
+             3xN array; individual vectors assumed to be normalised.
+    mass: dark matter particle mass.
+    min_impact_parameter: Smallest allowable impact factor. Smaller impact factors are set to this value.
+    SNR_func: interpolation function taking log(v) and log(b), and returning log(SNR^2/(G m m_sensor)^2).
+    '''
+    b_dot_n = np.einsum('ij,ij->j',sensor_vectors,b_bases) #dot product
+#    v_dot_n = np.einsum('ij,ij->j',sensor_vectors,v_bases)
+#     b[b < min_impact_parameter] = min_impact_parameter
+#     return G**2*mass**2*np.pi*(3*b_dot_n**2 + v_dot_n**2)/(8*b**3*v)
+    mass_arr = np.array([mass]*b_bases.shape[1])
+    mass_arr[b < min_impact_parameter] = mass_arr[b < min_impact_parameter]/(min_impact_parameter)**3*b[b < min_impact_parameter]**3 #scaling DM mass is equivalent to scaling test mass.
+    log_SNRs = SNR_func((np.log(v), np.log(b)))
+    return (G*mass_arr*b_dot_n)**2*np.exp(log_SNRs)
+
 
 def track_parameter_stacker(vel, entry_vecs, exit_vecs):
     '''
@@ -222,13 +246,33 @@ def impulse_noise(b, sensor_mass, gas_pressure, A_d, Q, f_m, T=4, QNR=1):
         print('Result may be invalid as integration time exceeds resonance frequency')
     return np.sqrt(4*(constants.hbar*sensor_mass/tau)/QNR**2 + alpha*tau)
 
-def impulse_noise_classical(b, sensor_mass, gas_pressure, A_d, Q, f_m, T=4, S_xx=1e-18):
+def _impulse_noise_squid_mw(b, sensor_mass, gas_pressure, A_d, Q, f_m, A, B, T=4):
+    '''Get impulse noise array from array of b. not correct, should not be used.'''
+    gamma = f_m*2*np.pi/Q
+    alpha = 4*k_B*sensor_mass*T*gamma + gas_pressure*A_d*np.sqrt(4*amu*k_B*T) + sensor_mass*gamma*f_m*2*np.pi*constants.hbar*A/B
+    beta = B*A*constants.hbar*sensor_mass/(gamma*f_m*2*np.pi)
+    tau_min = 2*b/v_dm
+    tau = np.zeros_like(b) + (9*beta/alpha)**0.25
+    tau_below_min_bool = tau < tau_min
+    tau[tau_below_min_bool] = tau_min[tau_below_min_bool]
+    tau_above_max_bool = tau > 1/(2*np.pi*f_m)
+    tau[tau_above_max_bool] = ((np.zeros_like(b)+1)/(2*np.pi*f_m))[tau_above_max_bool]
+    if np.any(tau_above_max_bool):
+        warnings.warn('Result may be sub-optimal as integration time exceeds resonance frequency')
+        print('Result may be sub-optimal as integration time exceeds resonance frequency')
+    return np.sqrt(3*beta/(tau**3) + alpha*tau)
+
+def impulse_noise_classical(b, sensor_mass, gas_pressure, A_d, Q, f_m, T=4, S_xx=1e-36):
     '''Get impulse noise array from array of b. S_xx in SI units of m^2/Hz'''
     alpha = 4*k_B*sensor_mass*T*(f_m*2*np.pi/Q) + gas_pressure*A_d*np.sqrt(4*amu*k_B*T)
-    tau_min = 2*b/v_dm
+#     tau_min = 2*b/v_dm
+    tau_min = 10*(np.zeros_like(b)+1)/f_m
     tau = (np.zeros_like(b)+1)*np.sqrt(sensor_mass*(f_m*2*np.pi)**2*(S_xx)/(alpha))
     tau_below_min_bool = tau < tau_min
     tau[tau_below_min_bool] = tau_min[tau_below_min_bool]
+    if np.any(tau_below_min_bool):
+        warnings.warn('Result may not be optimal, tau was below resonance period and was replaced with period')
+        print('Result may not be optimal, tau was below resonance period and was replaced with period')
     return np.sqrt(sensor_mass**2*(f_m*2*np.pi)**2*S_xx/tau + alpha*tau)
 
 
